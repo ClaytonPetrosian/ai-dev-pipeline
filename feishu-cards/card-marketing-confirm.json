@@ -1,0 +1,115 @@
+{
+  "msg_type": "interactive",
+  "card": {
+    "config": {
+      "wide_screen_mode": true,
+      "enable_forward": true
+    },
+    "header": {
+      "template": "yellow",
+      "title": {
+        "tag": "plain_text",
+        "content": "📢 用户评论回复 & 营销推文 — 等待确认"
+      }
+    },
+    "elements": [
+      {
+        "tag": "div",
+        "fields": [
+          {
+            "is_short": true,
+            "text": {
+              "tag": "lark_md",
+              "content": "**项目名称**\n{{project_name}}"
+            }
+          },
+          {
+            "is_short": true,
+            "text": {
+              "tag": "lark_md",
+              "content": "**监控周期**\n{{monitor_period}}"
+            }
+          }
+        ]
+      },
+      {
+        "tag": "hr"
+      },
+      {
+        "tag": "div",
+        "text": {
+          "tag": "lark_md",
+          "content": "**App Store 评论自动回复** ({{reply_count}} 条)"
+        }
+      },
+      {
+        "tag": "div",
+        "text": {
+          "tag": "lark_md",
+          "content": "{{comment_replies_preview}}"
+        }
+      },
+      {
+        "tag": "hr"
+      },
+      {
+        "tag": "div",
+        "text": {
+          "tag": "lark_md",
+          "content": "**AI 生成营销推文 (Twitter/X)**"
+        }
+      },
+      {
+        "tag": "div",
+        "text": {
+          "tag": "lark_md",
+          "content": "```\n{{tweet_content}}\n```"
+        }
+      },
+      {
+        "tag": "hr"
+      },
+      {
+        "tag": "action",
+        "actions": [
+          {
+            "tag": "button",
+            "text": {
+              "tag": "plain_text",
+              "content": "✅ 确认回复 & 发布推文"
+            },
+            "type": "primary",
+            "url": "{{n8n_webhook_base}}/approve-marketing?project={{project_id}}&token={{webhook_token}}"
+          },
+          {
+            "tag": "button",
+            "text": {
+              "tag": "plain_text",
+              "content": "✅ 仅确认评论回复"
+            },
+            "type": "default",
+            "url": "{{n8n_webhook_base}}/approve-replies?project={{project_id}}&token={{webhook_token}}"
+          },
+          {
+            "tag": "button",
+            "text": {
+              "tag": "plain_text",
+              "content": "✏️ 修改推文后重发"
+            },
+            "type": "default",
+            "url": "{{n8n_webhook_base}}/edit-tweet?project={{project_id}}&token={{webhook_token}}"
+          }
+        ]
+      },
+      {
+        "tag": "note",
+        "elements": [
+          {
+            "tag": "plain_text",
+            "content": "⏰ {{timestamp}} | 推文将发布到 @{{twitter_handle}}"
+          }
+        ]
+      }
+    ]
+  }
+}
