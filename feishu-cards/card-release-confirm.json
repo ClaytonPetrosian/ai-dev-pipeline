@@ -1,0 +1,117 @@
+{
+  "msg_type": "interactive",
+  "card": {
+    "config": {
+      "wide_screen_mode": true,
+      "enable_forward": true
+    },
+    "header": {
+      "template": "green",
+      "title": {
+        "tag": "plain_text",
+        "content": "🎉 构建成功 — 等待发布确认"
+      }
+    },
+    "elements": [
+      {
+        "tag": "div",
+        "fields": [
+          {
+            "is_short": true,
+            "text": {
+              "tag": "lark_md",
+              "content": "**项目名称**\n{{project_name}}"
+            }
+          },
+          {
+            "is_short": true,
+            "text": {
+              "tag": "lark_md",
+              "content": "**版本号**\n{{version}} ({{build_number}})"
+            }
+          }
+        ]
+      },
+      {
+        "tag": "div",
+        "fields": [
+          {
+            "is_short": true,
+            "text": {
+              "tag": "lark_md",
+              "content": "**目标平台**\nTestFlight / App Store"
+            }
+          },
+          {
+            "is_short": true,
+            "text": {
+              "tag": "lark_md",
+              "content": "**IPA 大小**\n{{ipa_size}} MB"
+            }
+          }
+        ]
+      },
+      {
+        "tag": "hr"
+      },
+      {
+        "tag": "div",
+        "text": {
+          "tag": "lark_md",
+          "content": "**构建摘要**\n- 分支: `{{branch}}`\n- Commit: `{{commit_sha}}`\n- Fastlane Lane: `{{lane}}`\n- 签名: {{signing_status}}"
+        }
+      },
+      {
+        "tag": "div",
+        "text": {
+          "tag": "lark_md",
+          "content": "**测试报告**\n✅ E2E: {{e2e_passed}}/{{e2e_total}} 通过\n✅ Vision QA: {{vision_score}}% 合规\n✅ 单元测试: {{unit_passed}}/{{unit_total}} 通过"
+        }
+      },
+      {
+        "tag": "hr"
+      },
+      {
+        "tag": "action",
+        "actions": [
+          {
+            "tag": "button",
+            "text": {
+              "tag": "plain_text",
+              "content": "🚀 确认发布到 TestFlight"
+            },
+            "type": "primary",
+            "url": "{{n8n_webhook_base}}/release?project={{project_id}}&target=testflight&token={{webhook_token}}"
+          },
+          {
+            "tag": "button",
+            "text": {
+              "tag": "plain_text",
+              "content": "🏪 确认发布到 App Store"
+            },
+            "type": "primary",
+            "url": "{{n8n_webhook_base}}/release?project={{project_id}}&target=appstore&token={{webhook_token}}"
+          },
+          {
+            "tag": "button",
+            "text": {
+              "tag": "plain_text",
+              "content": "⏸️ 暂不发布"
+            },
+            "type": "default",
+            "url": "{{n8n_webhook_base}}/hold?project={{project_id}}&token={{webhook_token}}"
+          }
+        ]
+      },
+      {
+        "tag": "note",
+        "elements": [
+          {
+            "tag": "plain_text",
+            "content": "⏰ {{timestamp}} | Commit {{commit_sha_short}} by {{author}}"
+          }
+        ]
+      }
+    ]
+  }
+}
