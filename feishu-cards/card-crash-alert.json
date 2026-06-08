@@ -1,0 +1,127 @@
+{
+  "msg_type": "interactive",
+  "card": {
+    "config": {
+      "wide_screen_mode": true,
+      "enable_forward": true
+    },
+    "header": {
+      "template": "red",
+      "title": {
+        "tag": "plain_text",
+        "content": "🚨 紧急报警 — 严重崩溃检测"
+      }
+    },
+    "elements": [
+      {
+        "tag": "div",
+        "fields": [
+          {
+            "is_short": true,
+            "text": {
+              "tag": "lark_md",
+              "content": "**项目名称**\n{{project_name}}"
+            }
+          },
+          {
+            "is_short": true,
+            "text": {
+              "tag": "lark_md",
+              "content": "**崩溃率**\n⚠️ {{crash_rate}}%"
+            }
+          }
+        ]
+      },
+      {
+        "tag": "div",
+        "fields": [
+          {
+            "is_short": true,
+            "text": {
+              "tag": "lark_md",
+              "content": "**影响版本**\n{{version}}"
+            }
+          },
+          {
+            "is_short": true,
+            "text": {
+              "tag": "lark_md",
+              "content": "**受影响用户**\n{{affected_users}}"
+            }
+          }
+        ]
+      },
+      {
+        "tag": "hr"
+      },
+      {
+        "tag": "div",
+        "text": {
+          "tag": "lark_md",
+          "content": "**Sentry 崩溃摘要**\n```\n{{crash_summary}}\n```"
+        }
+      },
+      {
+        "tag": "div",
+        "text": {
+          "tag": "lark_md",
+          "content": "**堆栈关键帧**\n{{stack_frames}}"
+        }
+      },
+      {
+        "tag": "hr"
+      },
+      {
+        "tag": "div",
+        "text": {
+          "tag": "lark_md",
+          "content": "🔧 **自动操作**\n- [x] GitHub Issue 已创建: #{{issue_number}}\n- [x] 标签: `#bug-from-user` `#crash`\n- [ ] 等待开发者确认修复方案"
+        }
+      },
+      {
+        "tag": "action",
+        "actions": [
+          {
+            "tag": "button",
+            "text": {
+              "tag": "plain_text",
+              "content": "🔗 查看 Sentry 详情"
+            },
+            "type": "default",
+            "url": "{{sentry_url}}"
+          },
+          {
+            "tag": "button",
+            "text": {
+              "tag": "plain_text",
+              "content": "🔗 查看 GitHub Issue"
+            },
+            "type": "default",
+            "url": "{{github_issue_url}}"
+          },
+          {
+            "tag": "button",
+            "text": {
+              "tag": "plain_text",
+              "content": "🤖 启动 AI 自动修复"
+            },
+            "type": "primary",
+            "url": "{{n8n_webhook_base}}/auto-fix?project={{project_id}}&issue={{issue_number}}&token={{webhook_token}}"
+          }
+        ]
+      },
+      {
+        "tag": "hr"
+      },
+      {
+        "tag": "note",
+        "elements": [
+          {
+            "tag": "plain_text",
+            "content": "⏰ {{timestamp}} | 监控频率: 每 6 小时 | 阈值: 崩溃率 > 1%"
+          }
+        ]
+      }
+    ]
+  }
+}
