@@ -1,0 +1,332 @@
+{
+  "name": "AI Dev Pipeline - Full Automation",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [{ "mode": "everyMinute" }]
+        },
+        "databaseId": "={{ $env.NOTION_DATABASE_ID }}"
+      },
+      "id": "notion-trigger",
+      "name": "Notion Trigger",
+      "type": "n8n-nodes-base.notionTrigger",
+      "typeVersion": 2,
+      "position": [200, 300],
+      "notes": "循环A起点: 监听Notion数据库状态变为Approved"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "x-api-key", "value": "={{ $env.ANTHROPIC_API_KEY }}" },
+            { "name": "content-type", "value": "application/json" },
+            { "name": "anthropic-version", "value": "2023-06-01" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"claude-sonnet-4-20250514\",\n  \"max_tokens\": 4096,\n  \"messages\": [{\n    \"role\": \"user\",\n    \"content\": \"将以下灵感碎片结构化为JSON格式的PRD。必须包含: feature_list, ui_spec(锁定Dopamine Pink #FF2D78 + Neo-brutalism风格), tech_stack(React Native/TypeScript), milestone_timeline。灵感内容: {{ $json.properties.Name.title[0].plain_text }} - {{ $json.properties.Status.status.name }}\"\n  }]\n}"
+      },
+      "id": "claude-prd",
+      "name": "Claude PRD Generator",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [450, 300],
+      "notes": "调用Claude 3.5 Sonnet生成结构化PRD"
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://api.github.com/repos/ClaytonPetrosian/ai-dev-pipeline/contents/docs/prd.json",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "token {{ $env.GITHUB_TOKEN }}" },
+            { "name": "Accept", "value": "application/vnd.github.v3+json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"message\": \"chore: auto-generate PRD from Notion\",\n  \"content\": \"{{ $json.choices[0].message.content | base64encode }}\",\n  \"branch\": \"main\"\n}"
+      },
+      "id": "github-commit-prd",
+      "name": "GitHub Commit PRD",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [700, 300],
+      "notes": "将PRD JSON提交到GitHub仓库"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"app_id\": \"{{ $env.FEISHU_APP_ID }}\",\n  \"app_secret\": \"{{ $env.FEISHU_APP_SECRET }}\"\n}"
+      },
+      "id": "feishu-get-token",
+      "name": "Feishu Get Token",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [950, 300],
+      "notes": "获取飞书tenant_access_token"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "Bearer {{ $json.tenant_access_token }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"receive_id\": \"{{ $env.FEISHU_CHAT_ID }}\",\n  \"msg_type\": \"interactive\",\n  \"content\": \"{\\\"config\\\":{\\\"wide_screen_mode\\\":true},\\\"header\\\":{\\\"template\\\":\\\"magenta\\\",\\\"title\\\":{\\\"tag\\\":\\\"plain_text\\\",\\\"content\\\":\\\"🚀 PRD 已生成 — 即将进入自动编码阶段\\\"}},\\\"elements\\\":[{\\\"tag\\\":\\\"div\\\",\\\"fields\\\":[{\\\"is_short\\\":true,\\\"text\\\":{\\\"tag\\\":\\\"lark_md\\\",\\\"content\\\":\\\"**项目**\\\\nAI Dev Pipeline\\\"}},{\\\"is_short\\\":true,\\\"text\\\":{\\\"tag\\\":\\\"lark_md\\\",\\\"content\\\":\\\"**阶段**\\\\n循环A → PRD生成\\\"}}]},{\\\"tag\\\":\\\"hr\\\"},{\\\"tag\\\":\\\"div\\\",\\\"text\\\":{\\\"tag\\\":\\\"lark_md\\\",\\\"content\\\":\\\"PRD已自动提交至 docs/prd.json\\\\n即将触发 GitHub Actions 自动编码\\\"}},{\\\"tag\\\":\\\"note\\\",\\\"elements\\\":[{\\\"tag\\\":\\\"plain_text\\\",\\\"content\\\":\\\"⏰ 自动化流水线运行中\\\"}]}]}\"\n}"
+      },
+      "id": "feishu-notify-prd",
+      "name": "Feishu Notify PRD Done",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1200, 300],
+      "notes": "飞书通知: PRD已生成"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.github.com/repos/ClaytonPetrosian/ai-dev-pipeline/dispatches",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "token {{ $env.GITHUB_TOKEN }}" },
+            { "name": "Accept", "value": "application/vnd.github.v3+json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"event_type\": \"prd_ready\",\n  \"client_payload\": {\n    \"branch\": \"dev\",\n    \"trigger_source\": \"n8n_pipeline\"\n  }\n}"
+      },
+      "id": "github-trigger-ci",
+      "name": "GitHub Trigger CI",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1450, 300],
+      "notes": "触发GitHub Actions运行自动编码流程"
+    },
+    {
+      "parameters": {
+        "path": "qa-approval",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-qa-approve",
+      "name": "QA Approval Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [200, 600],
+      "notes": "循环B: 接收飞书QA审批回调",
+      "webhookId": "qa-approval"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "" },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.query.action }}",
+              "rightValue": "approve",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ]
+        }
+      },
+      "id": "if-qa-approved",
+      "name": "QA Approved?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [450, 600],
+      "notes": "判断审批结果"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.github.com/repos/ClaytonPetrosian/ai-dev-pipeline/dispatches",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "token {{ $env.GITHUB_TOKEN }}" },
+            { "name": "Accept", "value": "application/vnd.github.v3+json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"event_type\": \"qa_approved\",\n  \"client_payload\": {\n    \"branch\": \"dev\",\n    \"action\": \"release\"\n  }\n}"
+      },
+      "id": "github-trigger-release",
+      "name": "GitHub Trigger Release",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [700, 550],
+      "notes": "触发Fastlane打包发布"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.github.com/repos/ClaytonPetrosian/ai-dev-pipeline/dispatches",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "token {{ $env.GITHUB_TOKEN }}" },
+            { "name": "Accept", "value": "application/vnd.github.v3+json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"event_type\": \"qa_rejected\",\n  \"client_payload\": {\n    \"branch\": \"dev\",\n    \"action\": \"fix_and_retest\"\n  }\n}"
+      },
+      "id": "github-trigger-fix",
+      "name": "GitHub Trigger Fix",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [700, 700],
+      "notes": "触发AI自动修复并重新测试"
+    },
+    {
+      "parameters": {
+        "path": "release-approval",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-release-approve",
+      "name": "Release Approval Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [200, 900],
+      "notes": "循环C: 接收飞书发布审批回调",
+      "webhookId": "release-approval"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.github.com/repos/ClaytonPetrosian/ai-dev-pipeline/dispatches",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "token {{ $env.GITHUB_TOKEN }}" },
+            { "name": "Accept", "value": "application/vnd.github.v3+json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"event_type\": \"release_confirmed\",\n  \"client_payload\": {\n    \"target\": \"{{ $json.query.target || 'testflight' }}\",\n    \"lane\": \"{{ $json.query.target === 'appstore' ? 'release' : 'beta' }}\"\n  }\n}"
+      },
+      "id": "github-trigger-fastlane",
+      "name": "GitHub Trigger Fastlane",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [450, 900],
+      "notes": "触发Fastlane打包发布到TestFlight/AppStore"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "hours", "hoursInterval": 6 }]
+        }
+      },
+      "id": "cron-monitor",
+      "name": "Monitor Cron (6h)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [200, 1200],
+      "notes": "循环C: 每6小时检查App Store评论和Sentry崩溃"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://sentry.io/api/0/organizations/{{ $env.SENTRY_ORG }}/issues/?query=is:unresolved+level:error&sort=freq&statsPeriod=6h",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "Bearer {{ $env.SENTRY_AUTH_TOKEN }}" }
+          ]
+        }
+      },
+      "id": "sentry-check",
+      "name": "Sentry Crash Check",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [450, 1200],
+      "notes": "检查Sentry崩溃日志"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.github.com/repos/ClaytonPetrosian/ai-dev-pipeline/issues",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "token {{ $env.GITHUB_TOKEN }}" },
+            { "name": "Accept", "value": "application/vnd.github.v3+json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"title\": \"[AUTO] Crash: {{ $json.title }}\",\n  \"body\": \"## Sentry Crash Report\\n\\n**Issue**: {{ $json.title }}\\n**Count**: {{ $json.count }} occurrences\\n**Users Affected**: {{ $json.userCount }}\\n**First Seen**: {{ $json.firstSeen }}\\n**Last Seen**: {{ $json.lastSeen }}\\n\\n### Stack Trace\\n```\\n{{ $json.metadata.value }}\\n```\\n\\n---\\n*Auto-generated by AI Dev Pipeline monitor*\",\n  \"labels\": [\"bug-from-user\", \"crash\", \"auto-generated\"]\n}"
+      },
+      "id": "github-create-issue",
+      "name": "GitHub Create Issue",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [700, 1200],
+      "notes": "自动创建GitHub Issue"
+    }
+  ],
+  "connections": {
+    "Notion Trigger": {
+      "main": [[{ "node": "Claude PRD Generator", "type": "main", "index": 0 }]]
+    },
+    "Claude PRD Generator": {
+      "main": [[{ "node": "GitHub Commit PRD", "type": "main", "index": 0 }]]
+    },
+    "GitHub Commit PRD": {
+      "main": [[{ "node": "Feishu Get Token", "type": "main", "index": 0 }]]
+    },
+    "Feishu Get Token": {
+      "main": [[{ "node": "Feishu Notify PRD Done", "type": "main", "index": 0 }]]
+    },
+    "Feishu Notify PRD Done": {
+      "main": [[{ "node": "GitHub Trigger CI", "type": "main", "index": 0 }]]
+    },
+    "QA Approval Webhook": {
+      "main": [[{ "node": "QA Approved?", "type": "main", "index": 0 }]]
+    },
+    "QA Approved?": {
+      "main": [
+        [{ "node": "GitHub Trigger Release", "type": "main", "index": 0 }],
+        [{ "node": "GitHub Trigger Fix", "type": "main", "index": 0 }]
+      ]
+    },
+    "Release Approval Webhook": {
+      "main": [[{ "node": "GitHub Trigger Fastlane", "type": "main", "index": 0 }]]
+    },
+    "Monitor Cron (6h)": {
+      "main": [[{ "node": "Sentry Crash Check", "type": "main", "index": 0 }]]
+    },
+    "Sentry Crash Check": {
+      "main": [[{ "node": "GitHub Create Issue", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "tags": [{ "name": "ai-pipeline" }],
+  "pinData": {}
+}
