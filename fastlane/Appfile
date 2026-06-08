@@ -1,0 +1,18 @@
+# Fastlane Appfile
+# iOS App Store 配置
+
+# Apple Developer 账号
+apple_id(ENV["APPLE_ID"] || "your@email.com")
+team_id(ENV["APPLE_TEAM_ID"] || "YOUR_TEAM_ID")
+
+# App Store Connect API Key
+app_store_connect_api_key(
+  key_id: ENV["ASC_KEY_ID"] || "YOUR_KEY_ID",
+  issuer_id: ENV["ASC_ISSUER_ID"] || "YOUR_ISSUER_ID",
+  key_content: ENV["ASC_API_KEY"] || "",
+  is_key_content_base64: false,
+  in_house: false
+)
+
+# App 信息
+app_identifier(ENV["APP_BUNDLE_ID"] || "com.yourcompany.yourapp")
