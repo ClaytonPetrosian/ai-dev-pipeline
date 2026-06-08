@@ -1,0 +1,146 @@
+{
+  "msg_type": "interactive",
+  "card": {
+    "config": {
+      "wide_screen_mode": true,
+      "enable_forward": true
+    },
+    "header": {
+      "template": "magenta",
+      "title": {
+        "tag": "plain_text",
+        "content": "🔍 QA 视觉验收 — 等待人工审批"
+      }
+    },
+    "elements": [
+      {
+        "tag": "div",
+        "fields": [
+          {
+            "is_short": true,
+            "text": {
+              "tag": "lark_md",
+              "content": "**项目名称**\n{{project_name}}"
+            }
+          },
+          {
+            "is_short": true,
+            "text": {
+              "tag": "lark_md",
+              "content": "**当前阶段**\n循环 B → 视觉质检"
+            }
+          }
+        ]
+      },
+      {
+        "tag": "div",
+        "fields": [
+          {
+            "is_short": true,
+            "text": {
+              "tag": "lark_md",
+              "content": "**测试轮次**\n第 {{attempt}} / 3 次"
+            }
+          },
+          {
+            "is_short": true,
+            "text": {
+              "tag": "lark_md",
+              "content": "**E2E 测试结果**\n{{test_passed}} / {{test_total}} 通过"
+            }
+          }
+        ]
+      },
+      {
+        "tag": "hr"
+      },
+      {
+        "tag": "div",
+        "text": {
+          "tag": "lark_md",
+          "content": "**Vision AI 评估报告**\n{{vision_report}}"
+        }
+      },
+      {
+        "tag": "div",
+        "text": {
+          "tag": "lark_md",
+          "content": "**UI 规范合规检查**\n✅ Dopamine Pink 色值匹配: {{color_score}}%\n✅ Neo-brutalism 元素检出: {{brutalism_score}}%\n✅ 信息密度评分: {{density_score}}/10"
+        }
+      },
+      {
+        "tag": "hr"
+      },
+      {
+        "tag": "div",
+        "text": {
+          "tag": "lark_md",
+          "content": "**测试截图预览**"
+        }
+      },
+      {
+        "tag": "img",
+        "img_key": "{{screenshot_img_key}}",
+        "alt": {
+          "tag": "plain_text",
+          "content": "E2E 测试截图"
+        },
+        "custom_width": 800
+      },
+      {
+        "tag": "div",
+        "text": {
+          "tag": "lark_md",
+          "content": "🖼️ 共 {{screenshot_count}} 张截图 | [查看全部截图]({{all_screenshots_url}})"
+        }
+      },
+      {
+        "tag": "hr"
+      },
+      {
+        "tag": "action",
+        "actions": [
+          {
+            "tag": "button",
+            "text": {
+              "tag": "plain_text",
+              "content": "✅ 确认发布"
+            },
+            "type": "primary",
+            "url": "{{n8n_webhook_base}}/approve?project={{project_id}}&attempt={{attempt}}&token={{webhook_token}}"
+          },
+          {
+            "tag": "button",
+            "text": {
+              "tag": "plain_text",
+              "content": "❌ 驳回重做"
+            },
+            "type": "danger",
+            "url": "{{n8n_webhook_base}}/reject?project={{project_id}}&attempt={{attempt}}&token={{webhook_token}}"
+          },
+          {
+            "tag": "button",
+            "text": {
+              "tag": "plain_text",
+              "content": "📝 添加备注"
+            },
+            "default": "default",
+            "url": "{{n8n_webhook_base}}/comment?project={{project_id}}&attempt={{attempt}}&token={{webhook_token}}"
+          }
+        ]
+      },
+      {
+        "tag": "hr"
+      },
+      {
+        "tag": "note",
+        "elements": [
+          {
+            "tag": "plain_text",
+            "content": "⏰ {{timestamp}} | Vision QA 由 {{vision_model}} 驱动 | 点击按钮后将触发对应自动化流程"
+          }
+        ]
+      }
+    ]
+  }
+}
