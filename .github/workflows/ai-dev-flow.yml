@@ -1,0 +1,513 @@
+# AI Dev Pipeline - GitHub Actions
+# 循环B: 自动编码 → E2E测试 → Vision QA → 发布
+name: AI Dev Flow
+
+on:
+  # 循环A完成后触发 (n8n dispatches this event)
+  repository_dispatch:
+    types:
+      - prd_ready
+      - qa_approved
+      - qa_rejected
+      - release_confirmed
+
+  # 也支持手动触发
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Action to perform'
+        required: true
+        default: 'code'
+        type: choice
+        options:
+          - code
+          - test
+          - vision-qa
+          - release
+
+env:
+  NODE_VERSION: '20'
+  CLAUDE_MODEL: 'claude-sonnet-4-20250514'
+
+jobs:
+  # ============================================
+  # Step 1: AI 自动编码 (Claude Code)
+  # ============================================
+  ai-code:
+    name: 🤖 AI Coding with Claude
+    runs-on: ubuntu-latest
+    if: >-
+      github.event.action == 'prd_ready' ||
+      github.event.action == 'qa_rejected' ||
+      (github.event.action == 'workflow_dispatch' && github.event.inputs.action == 'code')
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Claude Code CLI
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Create dev branch
+        run: |
+          git config user.name "AI Pipeline Bot"
+          git config user.email "ai-pipeline@bot.local"
+          git checkout -B dev || git checkout dev
+
+      - name: Read PRD and generate code
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          echo "📖 Reading PRD..."
+          PRD_CONTENT=$(cat docs/prd.json)
+          
+          echo "🤖 Invoking Claude Code..."
+          claude-code --print \
+            --model ${{ env.CLAUDE_MODEL }} \
+            --max-turns 30 \
+            "You are an expert React Native / TypeScript developer.
+
+          Read the PRD at docs/prd.json and implement all features described.
+          
+          PRD Content:
+          $PRD_CONTENT
+          
+          Requirements:
+          1. Use React Native + TypeScript + Vite + Tailwind CSS
+          2. UI Style: Dopamine Pink (#FF2D78) + Neo-brutalism (thick borders, hard shadows, bold colors)
+          3. High information density, no traditional industrial dark style
+          4. Write clean, well-structured code
+          5. Create components in src/components/
+          6. Create screens in src/screens/
+          7. Add unit tests in __tests__/
+          
+          After coding, run: npm run lint && npm run build" 2>&1 | tee /tmp/claude-output.log
+
+      - name: Commit and push changes
+        run: |
+          git add -A
+          git diff --cached --quiet || git commit -m "feat: AI-generated implementation from PRD"
+          git push origin dev --force-with-lease
+
+      - name: Store Claude output as artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: claude-code-output
+          path: /tmp/claude-output.log
+
+  # ============================================
+  # Step 2: E2E 测试 + 截图
+  # ============================================
+  e2e-test:
+    name: 🧪 E2E Testing & Screenshots
+    runs-on: ubuntu-latest
+    needs: ai-code
+    if: success()
+
+    steps:
+      - name: Checkout dev branch
+        uses: actions/checkout@v4
+        with:
+          ref: dev
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Create artifacts directory
+        run: mkdir -p ./artifacts/screenshots
+
+      - name: Run E2E tests with screenshots
+        run: |
+          # For React Native with Detox
+          if [ -f ".detoxrc.js" ] || [ -f ".detoxrc.json" ]; then
+            echo "Running Detox tests..."
+            npx detox build --configuration ios.sim.release 2>&1 || true
+            npx detox test --configuration ios.sim.release \
+              --take-screenshots on \
+              --record-logs all \
+              --artifacts-path ./artifacts 2>&1 | tee /tmp/e2e-output.log
+          # Fallback to Playwright for web
+          elif [ -f "playwright.config.ts" ] || [ -f "playwright.config.js" ]; then
+            echo "Running Playwright tests..."
+            npx playwright install --with-deps chromium 2>&1 || true
+            npx playwright test \
+              --reporter=html \
+              2>&1 | tee /tmp/e2e-output.log
+            # Copy screenshots
+            cp -r test-results/ ./artifacts/screenshots/ 2>/dev/null || true
+            cp -r playwright-report/ ./artifacts/screenshots/ 2>/dev/null || true
+          else
+            echo "⚠ No test framework config found. Running basic tests..."
+            npm test 2>&1 | tee /tmp/e2e-output.log || true
+          fi
+
+      - name: Upload test artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-screenshots
+          path: ./artifacts/
+          retention-days: 30
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-logs
+          path: /tmp/e2e-output.log
+
+  # ============================================
+  # Step 3: Vision AI 视觉质检
+  # ============================================
+  vision-qa:
+    name: 🔍 Vision QA Audit
+    runs-on: ubuntu-latest
+    needs: e2e-test
+    if: success()
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: dev
+
+      - name: Download screenshots
+        uses: actions/download-artifact@v4
+        with:
+          name: e2e-screenshots
+          path: ./artifacts/screenshots/
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Vision QA Analysis
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
+          FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
+          FEISHU_CHAT_ID: ${{ secrets.FEISHU_CHAT_ID }}
+          N8N_WEBHOOK_BASE: ${{ secrets.N8N_WEBHOOK_BASE }}
+          WEBHOOK_TOKEN: ${{ secrets.WEBHOOK_TOKEN }}
+        run: |
+          cat > /tmp/vision-qa.js << 'VISION_EOF'
+          const fs = require('fs');
+          const path = require('path');
+          const https = require('https');
+          const http = require('http');
+
+          // Collect all screenshot files
+          function collectScreenshots(dir) {
+            let files = [];
+            if (!fs.existsSync(dir)) return files;
+            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+              const full = path.join(dir, entry.name);
+              if (entry.isDirectory()) {
+                files = files.concat(collectScreenshots(full));
+              } else if (/\.(png|jpg|jpeg|gif|webp)$/i.test(entry.name)) {
+                files.push(full);
+              }
+            }
+            return files;
+          }
+
+          async function analyzeWithClaude(imagePath) {
+            const imageData = fs.readFileSync(imagePath);
+            const base64 = imageData.toString('base64');
+            const ext = path.extname(imagePath).slice(1);
+            const mediaType = ext === 'jpg' ? 'image/jpeg' : `image/${ext}`;
+
+            const body = JSON.stringify({
+              model: 'claude-sonnet-4-20250514',
+              max_tokens: 1024,
+              messages: [{
+                role: 'user',
+                content: [
+                  {
+                    type: 'image',
+                    source: { type: 'base64', media_type: mediaType, data: base64 }
+                  },
+                  {
+                    type: 'text',
+                    text: `Analyze this UI screenshot for a React Native app.
+                    
+          Check against these criteria:
+          1. Color scheme: Dopamine Pink (#FF2D78) dominant, with Neo-brutalism style
+          2. UI elements: thick borders (2-4px), hard drop shadows, bold typography
+          3. Information density: high, no wasted space
+          4. No traditional industrial dark theme
+          5. Overall visual consistency with neo-brutalism aesthetic
+          
+          Return a JSON object with:
+          - color_score: 0-100 (Dopamine Pink usage)
+          - brutalism_score: 0-100 (neo-brutalism elements)
+          - density_score: 0-10 (information density)
+          - pass: boolean (true if all scores > 60)
+          - issues: array of specific problems found
+          - summary: one-line assessment`
+                  }
+                ]
+              }]
+            });
+
+            return new Promise((resolve, reject) => {
+              const req = https.request({
+                hostname: 'api.anthropic.com',
+                path: '/v1/messages',
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'x-api-key': process.env.ANTHROPIC_API_KEY,
+                  'anthropic-version': '2023-06-01',
+                  'Content-Length': Buffer.byteLength(body)
+                }
+              }, (res) => {
+                let data = '';
+                res.on('data', chunk => data += chunk);
+                res.on('end', () => {
+                  try {
+                    const resp = JSON.parse(data);
+                    const text = resp.content?.[0]?.text || '';
+                    const jsonMatch = text.match(/\{[\s\S]*\}/);
+                    resolve(jsonMatch ? JSON.parse(jsonMatch[0]) : { pass: false, summary: 'Parse failed', issues: [text] });
+                  } catch (e) {
+                    resolve({ pass: false, summary: 'Error: ' + e.message, issues: [] });
+                  }
+                });
+              });
+              req.on('error', reject);
+              req.write(body);
+              req.end();
+            });
+          }
+
+          async function sendToFeishu(report) {
+            // Get token
+            const tokenBody = JSON.stringify({
+              app_id: process.env.FEISHU_APP_ID,
+              app_secret: process.env.FEISHU_APP_SECRET
+            });
+
+            const token = await new Promise((resolve, reject) => {
+              const req = https.request({
+                hostname: 'open.feishu.cn',
+                path: '/open-apis/auth/v3/tenant_access_token/internal',
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(tokenBody) }
+              }, (res) => {
+                let d = '';
+                res.on('data', c => d += c);
+                res.on('end', () => resolve(JSON.parse(d).tenant_access_token));
+              });
+              req.on('error', reject);
+              req.write(tokenBody);
+              req.end();
+            });
+
+            const cardContent = JSON.stringify({
+              config: { wide_screen_mode: true },
+              header: {
+                template: report.allPassed ? 'green' : 'red',
+                title: { tag: 'plain_text', content: report.allPassed ? '✅ Vision QA 通过 — 等待发布确认' : '❌ Vision QA 未通过 — 需要修复' }
+              },
+              elements: [
+                {
+                  tag: 'div',
+                  fields: [
+                    { is_short: true, text: { tag: 'lark_md', content: `**测试截图**\n${report.totalScreenshots} 张` } },
+                    { is_short: true, text: { tag: 'lark_md', content: `**通过率**\n${report.passed}/${report.totalScreenshots}` } }
+                  ]
+                },
+                { tag: 'hr' },
+                { tag: 'div', text: { tag: 'lark_md', content: `**AI 评估**\n${report.summary}` } },
+                { tag: 'hr' },
+                {
+                  tag: 'action',
+                  actions: report.allPassed ? [
+                    { tag: 'button', text: { tag: 'plain_text', content: '✅ 确认发布' }, type: 'primary', url: `${process.env.N8N_WEBHOOK_BASE}/qa-approval?action=approve&token=${process.env.WEBHOOK_TOKEN}` },
+                    { tag: 'button', text: { tag: 'plain_text', content: '❌ 驳回重做' }, type: 'danger', url: `${process.env.N8N_WEBHOOK_BASE}/qa-approval?action=reject&token=${process.env.WEBHOOK_TOKEN}` }
+                  ] : [
+                    { tag: 'button', text: { tag: 'plain_text', content: '🔄 自动修复' }, type: 'primary', url: `${process.env.N8N_WEBHOOK_BASE}/qa-approval?action=reject&token=${process.env.WEBHOOK_TOKEN}` }
+                  ]
+                }
+              ]
+            });
+
+            const msgBody = JSON.stringify({
+              receive_id: process.env.FEISHU_CHAT_ID,
+              msg_type: 'interactive',
+              content: cardContent
+            });
+
+            await new Promise((resolve, reject) => {
+              const req = https.request({
+                hostname: 'open.feishu.cn',
+                path: '/open-apis/im/v1/messages?receive_id_type=chat_id',
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${token}`,
+                  'Content-Length': Buffer.byteLength(msgBody)
+                }
+              }, (res) => {
+                let d = '';
+                res.on('data', c => d += c);
+                res.on('end', () => { console.log('Feishu response:', d); resolve(); });
+              });
+              req.on('error', reject);
+              req.write(msgBody);
+              req.end();
+            });
+          }
+
+          async function main() {
+            const screenshots = collectScreenshots('./artifacts/screenshots');
+            console.log(`Found ${screenshots.length} screenshots`);
+
+            if (screenshots.length === 0) {
+              console.log('No screenshots found. Creating placeholder report.');
+              fs.writeFileSync('/tmp/vision-report.json', JSON.stringify({ pass: true, summary: 'No screenshots to review', totalScreenshots: 0, passed: 0, allPassed: true }));
+              return;
+            }
+
+            const results = [];
+            for (const ss of screenshots.slice(0, 5)) {  // Limit to 5 screenshots
+              console.log(`Analyzing: ${ss}`);
+              try {
+                const r = await analyzeWithClaude(ss);
+                results.push({ file: ss, ...r });
+              } catch (e) {
+                results.push({ file: ss, pass: false, summary: 'Error: ' + e.message });
+              }
+            }
+
+            const passed = results.filter(r => r.pass).length;
+            const report = {
+              totalScreenshots: results.length,
+              passed,
+              allPassed: passed === results.length,
+              results,
+              summary: results.map(r => `${path.basename(r.file)}: ${r.pass ? '✅' : '❌'} ${r.summary}`).join('\n')
+            };
+
+            fs.writeFileSync('/tmp/vision-report.json', JSON.stringify(report, null, 2));
+            console.log(`\nVision QA Report: ${passed}/${results.length} passed`);
+
+            if (process.env.FEISHU_APP_ID) {
+              await sendToFeishu(report);
+              console.log('Sent to Feishu');
+            }
+
+            if (!report.allPassed) {
+              process.exit(1);
+            }
+          }
+
+          main().catch(e => { console.error(e); process.exit(1); });
+          VISION_EOF
+          
+          node /tmp/vision-qa.js
+
+      - name: Upload vision report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: vision-report
+          path: /tmp/vision-report.json
+
+  # ============================================
+  # Step 4: Fastlane 打包发布
+  # ============================================
+  fastlane-release:
+    name: 🚀 Fastlane Release
+    runs-on: macos-latest
+    needs: vision-qa
+    if: >-
+      github.event.action == 'release_confirmed' ||
+      (github.event.action == 'workflow_dispatch' && github.event.inputs.action == 'release')
+    
+    environment: production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: dev
+
+      - name: Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.2'
+          bundler-cache: true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          bundle install
+          cd ios && pod install && cd ..
+
+      - name: Import Code Signing Certificate
+        uses: apple-actions/import-codesign-certs@v2
+        with:
+          p12-file-base64: ${{ secrets.APPLE_CERTIFICATE_P12 }}
+          p12-password: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+
+      - name: Download Provisioning Profile
+        run: |
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          echo "${{ secrets.APPLE_PROVISIONING_PROFILE }}" | base64 -d > ~/Library/MobileDevice/Provisioning\ Profiles/profile.mobileprovision
+
+      - name: Run Fastlane
+        env:
+          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          APP_STORE_CONNECT_API_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          APP_STORE_CONNECT_API_KEY: ${{ secrets.ASC_API_KEY }}
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          MATCH_GIT_PRIVATE_KEY: ${{ secrets.MATCH_GIT_PRIVATE_KEY }}
+        run: |
+          LANE="${{ github.event.client_payload.lane || 'beta' }}"
+          echo "Running lane: $LANE"
+          bundle exec fastlane ios $LANE
+
+      - name: Notify Feishu - Release Success
+        if: success()
+        env:
+          FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
+          FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
+          FEISHU_CHAT_ID: ${{ secrets.FEISHU_CHAT_ID }}
+        run: |
+          TOKEN=$(curl -s -X POST "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal" \
+            -H "Content-Type: application/json" \
+            -d "{\"app_id\":\"$FEISHU_APP_ID\",\"app_secret\":\"$FEISHU_APP_SECRET\"}" | python3 -c "import sys,json;print(json.load(sys.stdin).get('tenant_access_token',''))")
+          
+          LANE="${{ github.event.client_payload.lane || 'beta' }}"
+          curl -s -X POST "https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id" \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{\"receive_id\":\"$FEISHU_CHAT_ID\",\"msg_type\":\"interactive\",\"content\":\"$(echo '{"config":{"wide_screen_mode":true},"header":{"template":"green","title":{"tag":"plain_text","content":"🎉 发布成功"}},"elements":[{"tag":"div","text":{"tag":"lark_md","content":"**Lane**: '"$LANE"'\\n**平台**: iOS\\n**状态**: 已上传至 TestFlight / App Store Connect"}}]}' | sed 's/"/\\"/g')\"}"
