@@ -1,0 +1,218 @@
+# Fastlane Configuration for AI Dev Pipeline
+# iOS App Store 自动化打包发布
+
+default_platform(:ios)
+
+# ============================================
+# 通用设置
+# ============================================
+
+platform :ios do
+  
+  before_all do
+    setup_circle_ci if ENV['CI']
+  end
+
+  # ============================================
+  # Beta: 上传到 TestFlight
+  # ============================================
+  desc "Push a new beta build to TestFlight"
+  lane :beta do
+    ensure_git_status_clean
+
+    # 读取版本号
+    version = get_version_number(xcodeproj: "ios/App.xcodeproj")
+    build_number = increment_build_number(
+      xcodeproj: "ios/App.xcodeproj",
+      build_number: (Time.now.strftime("%Y%m%d%H%M"))
+    )
+
+    UI.message "📦 Building version #{version} (#{build_number})"
+
+    # 代码签名
+    match(
+      type: "appstore",
+      readonly: true,
+      app_identifier: ENV["APP_BUNDLE_ID"] || "com.yourcompany.yourapp"
+    )
+
+    # 构建
+    build_app(
+      workspace: "ios/App.xcworkspace",
+      scheme: "App",
+      export_method: "app-store",
+      output_directory: "./build",
+      output_name: "App.ipa",
+      clean: true,
+      include_bitcode: false
+    )
+
+    # 上传到 TestFlight
+    upload_to_testflight(
+      skip_waiting_for_build_processing: true,
+      changelog: generate_changelog
+    )
+
+    # Git 标记
+    commit_version_bump(
+      xcodeproj: "ios/App.xcodeproj",
+      message: "chore: bump version to #{version} (#{build_number})"
+    )
+    add_git_tag(
+      tag: "v#{version}-#{build_number}",
+      message: "Beta release #{version} (#{build_number})"
+    )
+    push_to_git_remote
+
+    UI.success "✅ Beta build #{version} (#{build_number}) uploaded to TestFlight"
+  end
+
+  # ============================================
+  # Release: 提交到 App Store 审核
+  # ============================================
+  desc "Push a new release build to the App Store"
+  lane :release do
+    ensure_git_status_clean
+
+    version = get_version_number(xcodeproj: "ios/App.xcodeproj")
+    build_number = increment_build_number(
+      xcodeproj: "ios/App.xcodeproj",
+      build_number: (Time.now.strftime("%Y%m%d%H%M"))
+    )
+
+    UI.message "🏪 Building release version #{version} (#{build_number})"
+
+    # 代码签名
+    match(
+      type: "appstore",
+      readonly: true,
+      app_identifier: ENV["APP_BUNDLE_ID"] || "com.yourcompany.yourapp"
+    )
+
+    # 构建
+    build_app(
+      workspace: "ios/App.xcworkspace",
+      scheme: "App",
+      export_method: "app-store",
+      output_directory: "./build",
+      output_name: "App.ipa",
+      clean: true,
+      include_bitcode: false
+    )
+
+    # 上传到 App Store Connect
+    upload_to_app_store(
+      force: true,
+      skip_metadata: false,
+      skip_screenshots: false,
+      precheck_include_in_app_purchases: false,
+      submit_for_review: true,
+      automatic_release: false,
+      phased_release: true
+    )
+
+    # Git 标记
+    commit_version_bump(
+      xcodeproj: "ios/App.xcodeproj",
+      message: "chore: release version #{version} (#{build_number})"
+    )
+    add_git_tag(
+      tag: "v#{version}",
+      message: "Release #{version} (#{build_number})"
+    )
+    push_to_git_remote
+
+    UI.success "✅ Release #{version} (#{build_number}) submitted for App Store review"
+  end
+
+  # ============================================
+  # Screenshots: 自动生成 App Store 截图
+  # ============================================
+  desc "Generate App Store screenshots"
+  lane :screenshots do
+    capture_screenshots(
+      workspace: "ios/App.xcworkspace",
+      scheme: "App",
+      output_directory: "./fastlane/screenshots",
+      clean: true,
+      override_status_bar: true,
+      dark_mode: false
+    )
+  end
+
+  # ============================================
+  # Metadata: 更新 App Store 元数据
+  # ============================================
+  desc "Upload metadata to App Store Connect"
+  lane :metadata do
+    upload_to_app_store(
+      skip_binary_upload: true,
+      skip_screenshots: true,
+      force: true
+    )
+  end
+
+  # ============================================
+  # 辅助方法
+  # ============================================
+
+  def generate_changelog
+    # 从 git log 生成变更日志
+    changelog = changelog_from_git_commits(
+      commits_count: 10,
+      pretty: "- %s",
+      merge_commitFiltering: "exclude_merges"
+    )
+    changelog || "Auto-generated build"
+  end
+
+  # ============================================
+  # 错误处理
+  # ============================================
+
+  after_all do |lane|
+    UI.success "Lane '#{lane}' completed successfully"
+  end
+
+  error do |lane, exception|
+    UI.error "Lane '#{lane}' failed: #{exception.message}"
+    
+    # 发送飞书错误通知 (如果配置了)
+    if ENV['FEISHU_APP_ID'] && ENV['FEISHU_APP_SECRET']
+      notify_feishu_error(lane, exception)
+    end
+  end
+
+  def notify_feishu_error(lane, exception)
+    require 'net/http'
+    require 'json'
+    require 'uri'
+
+    # 获取 token
+    uri = URI("https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal")
+    resp = Net::HTTP.post(uri, { app_id: ENV['FEISHU_APP_ID'], app_secret: ENV['FEISHU_APP_SECRET'] }.to_json, { "Content-Type" => "application/json" })
+    token = JSON.parse(resp.body)["tenant_access_token"]
+
+    # 发送错误通知
+    msg_uri = URI("https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id")
+    msg = {
+      receive_id: ENV['FEISHU_CHAT_ID'],
+      msg_type: "interactive",
+      content: {
+        config: { wide_screen_mode: true },
+        header: { template: "red", title: { tag: "plain_text", content: "🚨 Fastlane 构建失败" } },
+        elements: [
+          { tag: "div", text: { tag: "lark_md", content: "**Lane**: #{lane}\n**错误**: #{exception.message}" } }
+        ]
+      }.to_json
+    }.to_json
+
+    req = Net::HTTP::Post.new(msg_uri)
+    req["Authorization"] = "Bearer #{token}"
+    req["Content-Type"] = "application/json"
+    req.body = msg
+    Net::HTTP.start(msg_uri.hostname, msg_uri.port, use_ssl: true) { |http| http.request(req) }
+  rescue => e
+    UI.error "Failed to send Feishu notification: #{e.message}"
+  end
+end
