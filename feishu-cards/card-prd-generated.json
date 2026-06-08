@@ -1,0 +1,95 @@
+{
+  "msg_type": "interactive",
+  "card": {
+    "config": {
+      "wide_screen_mode": true,
+      "enable_forward": true
+    },
+    "header": {
+      "template": "magenta",
+      "title": {
+        "tag": "plain_text",
+        "content": "🚀 PRD 已生成 — 即将进入自动编码阶段"
+      }
+    },
+    "elements": [
+      {
+        "tag": "div",
+        "fields": [
+          {
+            "is_short": true,
+            "text": {
+              "tag": "lark_md",
+              "content": "**项目名称**\n{{project_name}}"
+            }
+          },
+          {
+            "is_short": true,
+            "text": {
+              "tag": "lark_md",
+              "content": "**当前阶段**\n循环 A → PRD 生成"
+            }
+          }
+        ]
+      },
+      {
+        "tag": "div",
+        "fields": [
+          {
+            "is_short": true,
+            "text": {
+              "tag": "lark_md",
+              "content": "**AI 模型**\nClaude 3.5 Sonnet"
+            }
+          },
+          {
+            "is_short": true,
+            "text": {
+              "tag": "lark_md",
+              "content": "**Feature 数量**\n{{feature_count}} 项"
+            }
+          }
+        ]
+      },
+      {
+        "tag": "hr"
+      },
+      {
+        "tag": "div",
+        "text": {
+          "tag": "lark_md",
+          "content": "**AI 评估摘要**\n{{ai_summary}}"
+        }
+      },
+      {
+        "tag": "div",
+        "text": {
+          "tag": "lark_md",
+          "content": "**UI 风格锁定**\n🎨 Dopamine Pink (#FF2D78) + Neo-brutalism 拼色美学\n高信息密度 | 粗边框 | 硬阴影"
+        }
+      },
+      {
+        "tag": "hr"
+      },
+      {
+        "tag": "div",
+        "text": {
+          "tag": "lark_md",
+          "content": "📁 PRD 文件已提交至: `docs/prd.json` ({{branch}} 分支)\n🔗 [查看 PRD 详情]({{prd_url}})"
+        }
+      },
+      {
+        "tag": "hr"
+      },
+      {
+        "tag": "note",
+        "elements": [
+          {
+            "tag": "plain_text",
+            "content": "⏰ {{timestamp}} | 自动化流水线将在无进一步操作后自动进入编码阶段"
+          }
+        ]
+      }
+    ]
+  }
+}
